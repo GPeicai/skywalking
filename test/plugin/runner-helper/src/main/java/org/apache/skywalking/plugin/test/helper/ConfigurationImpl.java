@@ -24,7 +24,6 @@ import java.io.FileReader;
 import java.util.Collections;
 import java.util.List;
 import org.apache.skywalking.plugin.test.helper.exception.ConfigureFileNotFoundException;
-import org.apache.skywalking.plugin.test.helper.util.StringUtils;
 import org.apache.skywalking.plugin.test.helper.vo.CaseConfiguration;
 import org.yaml.snakeyaml.Yaml;
 
@@ -34,7 +33,7 @@ public class ConfigurationImpl implements IConfiguration {
 
     public ConfigurationImpl() throws FileNotFoundException, ConfigureFileNotFoundException {
         String configureFile = System.getProperty("configure.file");
-        if (StringUtils.isBlank(configureFile)) {
+        if (Strings.isNullOrEmpty(configureFile)) {
             throw new ConfigureFileNotFoundException();
         }
 
@@ -84,11 +83,6 @@ public class ConfigurationImpl implements IConfiguration {
     @Override
     public String scenarioVersion() {
         return System.getProperty("scenario.version");
-    }
-
-    @Override
-    public String testFramework() {
-        return this.configuration.getFramework();
     }
 
     @Override
@@ -154,4 +148,8 @@ public class ConfigurationImpl implements IConfiguration {
         return System.getProperty("output.dir");
     }
 
+    @Override
+    public String jacocoHome() {
+        return System.getProperty("jacoco.home");
+    }
 }

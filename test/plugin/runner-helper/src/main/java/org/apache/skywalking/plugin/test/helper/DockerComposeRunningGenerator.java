@@ -36,7 +36,7 @@ import org.apache.skywalking.plugin.test.helper.vo.DependencyComponent;
 import org.apache.skywalking.plugin.test.helper.vo.DockerService;
 
 public class DockerComposeRunningGenerator extends AbstractRunningGenerator {
-    private static Logger logger = LogManager.getLogger(MethodHandles.lookup().lookupClass());
+    private static final Logger logger = LogManager.getLogger(MethodHandles.lookup().lookupClass());
 
     protected DockerComposeRunningGenerator() {
     }
@@ -65,9 +65,7 @@ public class DockerComposeRunningGenerator extends AbstractRunningGenerator {
         root.put("network_name", configuration.dockerNetworkName());
 
         ArrayList<String> links = Lists.newArrayList();
-        configuration.caseConfiguration().getDependencies().forEach((k, service) -> {
-            links.add(service.getHostname());
-        });
+        configuration.caseConfiguration().getDependencies().forEach((k, service) -> links.add(service.getHostname()));
 
         root.put("links", links);
         root.put("services", convertDockerServices(configuration.scenarioVersion(), configuration.caseConfiguration()
@@ -108,7 +106,7 @@ public class DockerComposeRunningGenerator extends AbstractRunningGenerator {
             service.setEntrypoint(dependency.getEntrypoint());
             service.setHealthcheck(dependency.getHealthcheck());
             service.setEnvironment(dependency.getEnvironment());
-            service.setRemoveOnExit(dependency.getRemoveOnExit());
+            service.setRemoveOnExit(dependency.isRemoveOnExit());
             services.add(service);
         });
         return services;
@@ -128,7 +126,7 @@ public class DockerComposeRunningGenerator extends AbstractRunningGenerator {
 
         StringBuilder removeImagesScript = new StringBuilder();
         configuration.caseConfiguration().getDependencies().forEach((name, service) -> {
-            if (service.getRemoveOnExit()) {
+            if (service.isRemoveOnExit()) {
                 removeImagesScript.append("docker rmi ")
                                   .append(service.getImage().replace("${CASE_SERVER_IMAGE_VERSION}", configuration.scenarioVersion()))
                                   .append(System.lineSeparator());
@@ -136,10 +134,9 @@ public class DockerComposeRunningGenerator extends AbstractRunningGenerator {
         });
         root.put("removeImagesScript", removeImagesScript.toString());
 
-        StringWriter out = null;
+        StringWriter out = new StringWriter();
 
         try {
-            out = new StringWriter();
             cfg.getTemplate("compose-start-script.template").process(root, out);
         } catch (Exception e) {
             logger.error("Failed to generate running script.", e);

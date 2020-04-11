@@ -32,9 +32,6 @@ public interface IConfiguration {
 
     String scenarioVersion();
 
-    @Deprecated
-    String testFramework();
-
     String healthCheck();
 
     String startScript();
@@ -55,4 +52,5 @@ public interface IConfiguration {
 
     String outputDir();
 
+    String jacocoHome();
 }

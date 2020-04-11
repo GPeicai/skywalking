@@ -29,7 +29,7 @@ import org.apache.logging.log4j.Logger;
 import org.apache.skywalking.plugin.test.helper.exception.GenerateFailedException;
 
 public abstract class AbstractRunningGenerator implements ScenarioRunningScriptGenerator {
-    private Logger logger = LogManager.getLogger(MethodHandles.lookup().lookupClass());
+    private static final Logger logger = LogManager.getLogger(MethodHandles.lookup().lookupClass());
     protected final Configuration cfg;
 
     protected AbstractRunningGenerator() {
