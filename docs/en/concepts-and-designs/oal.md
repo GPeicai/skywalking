@@ -34,7 +34,7 @@ Read [Scope Definitions](scope-definitions.md), you can find all existing Scopes
 Use filter to build the conditions for the value of fields, by using field name and expression. 
 
 The expressions support to link by `and`, `or` and `(...)`. 
-The OPs support `=`, `!=`, `>`, `<`, `in (v1, v2, ...`, `like "%..."`, with type detection based of field type. Trigger compile
+The OPs support `==`, `!=`, `>`, `<`, `>=`, `<=`, `like %...`, `like ...%` and `like %...%`, with type detection based of field type. Trigger compile
  or code generation error if incompatible. 
 
 ## Aggregation Function
@@ -58,8 +58,8 @@ In this case, all input are requests of each endpoint, condition is `endpoint.st
 
 In this case, calls of each service. 
 
-- `thermodynamic`. Read [Heatmap in WIKI](https://en.wikipedia.org/wiki/Heat_map)
-> All_heatmap = from(All.latency).thermodynamic(100, 20);
+- `histogram`. Read [Heatmap in WIKI](https://en.wikipedia.org/wiki/Heat_map)
+> All_heatmap = from(All.latency).histogram(100, 20);
 
 In this case, thermodynamic heatmap of all incoming requests. 
 The parameter (1) is the precision of latency calculation, such as in above case, 113ms and 193ms are considered same in the 101-200ms group.
@@ -103,7 +103,7 @@ In default, no one is being disable.
 Endpoint_p99 = from(Endpoint.latency).filter(name in ("Endpoint1", "Endpoint2")).summary(0.99)
 
 // Caculate p99 of Endpoint name started with `serv`
-serv_Endpoint_p99 = from(Endpoint.latency).filter(name like ("serv%")).summary(0.99)
+serv_Endpoint_p99 = from(Endpoint.latency).filter(name like "serv%").summary(0.99)
 
 // Caculate the avg response time of each Endpoint
 Endpoint_avg = from(Endpoint.latency).avg()
@@ -112,7 +112,7 @@ Endpoint_avg = from(Endpoint.latency).avg()
 Endpoint_percentile = from(Endpoint.latency).percentile(10)
 
 // Caculate the percent of response status is true, for each service.
-Endpoint_success = from(Endpoint.*).filter(status = "true").percent()
+Endpoint_success = from(Endpoint.*).filter(status == true).percent()
 
 // Caculate the percent of response code in [200, 299], for each service.
 Endpoint_200 = from(Endpoint.*).filter(responseCode like "2%").percent()

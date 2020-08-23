@@ -18,13 +18,18 @@
 
 package org.apache.skywalking.oap.server.storage.plugin.jdbc.mysql;
 
+import lombok.extern.slf4j.Slf4j;
+import org.apache.skywalking.oap.server.core.Const;
 import org.apache.skywalking.oap.server.core.CoreModule;
+import org.apache.skywalking.oap.server.core.config.ConfigService;
 import org.apache.skywalking.oap.server.core.storage.IBatchDAO;
 import org.apache.skywalking.oap.server.core.storage.IHistoryDeleteDAO;
 import org.apache.skywalking.oap.server.core.storage.StorageDAO;
 import org.apache.skywalking.oap.server.core.storage.StorageException;
 import org.apache.skywalking.oap.server.core.storage.StorageModule;
 import org.apache.skywalking.oap.server.core.storage.cache.INetworkAddressAliasDAO;
+import org.apache.skywalking.oap.server.core.storage.management.UITemplateManagementDAO;
+import org.apache.skywalking.oap.server.core.storage.model.ModelCreator;
 import org.apache.skywalking.oap.server.core.storage.profile.IProfileTaskLogQueryDAO;
 import org.apache.skywalking.oap.server.core.storage.profile.IProfileTaskQueryDAO;
 import org.apache.skywalking.oap.server.core.storage.profile.IProfileThreadSnapshotQueryDAO;
@@ -53,8 +58,7 @@ import org.apache.skywalking.oap.server.storage.plugin.jdbc.h2.dao.H2ProfileThre
 import org.apache.skywalking.oap.server.storage.plugin.jdbc.h2.dao.H2StorageDAO;
 import org.apache.skywalking.oap.server.storage.plugin.jdbc.h2.dao.H2TopNRecordsQueryDAO;
 import org.apache.skywalking.oap.server.storage.plugin.jdbc.h2.dao.H2TopologyQueryDAO;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.skywalking.oap.server.storage.plugin.jdbc.h2.dao.H2UITemplateManagementDAO;
 
 /**
  * MySQL storage provider should be secondary choice for production usage as SkyWalking storage solution. It enhanced
@@ -64,9 +68,8 @@ import org.slf4j.LoggerFactory;
  * this storage implementation, we could also use this in MySQL-compatible projects, such as, Apache ShardingSphere,
  * TiDB
  */
+@Slf4j
 public class MySQLStorageProvider extends ModuleProvider {
-
-    private static final Logger logger = LoggerFactory.getLogger(MySQLStorageProvider.class);
 
     private MySQLStorageConfig config;
     private JDBCHikariCPClient mysqlClient;
@@ -95,13 +98,25 @@ public class MySQLStorageProvider extends ModuleProvider {
         mysqlClient = new JDBCHikariCPClient(config.getProperties());
 
         this.registerServiceImplementation(IBatchDAO.class, new H2BatchDAO(mysqlClient));
-        this.registerServiceImplementation(StorageDAO.class, new H2StorageDAO(mysqlClient));
+        this.registerServiceImplementation(
+            StorageDAO.class,
+            new H2StorageDAO(
+                getManager(), mysqlClient, config.getMaxSizeOfArrayColumn(), config.getNumOfSearchableValuesPerTag())
+        );
         this.registerServiceImplementation(
             INetworkAddressAliasDAO.class, new H2NetworkAddressAliasDAO(mysqlClient));
 
         this.registerServiceImplementation(ITopologyQueryDAO.class, new H2TopologyQueryDAO(mysqlClient));
         this.registerServiceImplementation(IMetricsQueryDAO.class, new H2MetricsQueryDAO(mysqlClient));
-        this.registerServiceImplementation(ITraceQueryDAO.class, new MySQLTraceQueryDAO(mysqlClient));
+        this.registerServiceImplementation(
+            ITraceQueryDAO.class,
+            new MySQLTraceQueryDAO(
+                getManager(),
+                mysqlClient,
+                config.getMaxSizeOfArrayColumn(),
+                config.getNumOfSearchableValuesPerTag()
+            )
+        );
         this.registerServiceImplementation(
             IMetadataQueryDAO.class, new H2MetadataQueryDAO(mysqlClient, config.getMetadataQueryMaxSize()));
         this.registerServiceImplementation(IAggregationQueryDAO.class, new MySQLAggregationQueryDAO(mysqlClient));
@@ -115,15 +130,29 @@ public class MySQLStorageProvider extends ModuleProvider {
         this.registerServiceImplementation(IProfileTaskLogQueryDAO.class, new H2ProfileTaskLogQueryDAO(mysqlClient));
         this.registerServiceImplementation(
             IProfileThreadSnapshotQueryDAO.class, new H2ProfileThreadSnapshotQueryDAO(mysqlClient));
+        this.registerServiceImplementation(UITemplateManagementDAO.class, new H2UITemplateManagementDAO(mysqlClient));
     }
 
     @Override
     public void start() throws ServiceNotProvidedException, ModuleStartException {
+        final ConfigService configService = getManager().find(CoreModule.NAME)
+                                                        .provider()
+                                                        .getService(ConfigService.class);
+        final int numOfSearchableTags = configService.getSearchableTracesTags().split(Const.COMMA).length;
+        if (numOfSearchableTags * config.getNumOfSearchableValuesPerTag() > config.getMaxSizeOfArrayColumn()) {
+            throw new ModuleStartException("Size of searchableTracesTags[" + numOfSearchableTags
+                                               + "] * numOfSearchableValuesPerTag[" + config.getNumOfSearchableValuesPerTag()
+                                               + "] > maxSizeOfArrayColumn[" + config.getMaxSizeOfArrayColumn()
+                                               + "]. Potential out of bound in the runtime.");
+        }
+
         try {
             mysqlClient.connect();
 
-            MySQLTableInstaller installer = new MySQLTableInstaller(getManager());
-            installer.install(mysqlClient);
+            MySQLTableInstaller installer = new MySQLTableInstaller(
+                mysqlClient, getManager(), config.getMaxSizeOfArrayColumn(), config.getNumOfSearchableValuesPerTag()
+            );
+            getManager().find(CoreModule.NAME).provider().getService(ModelCreator.class).addModelListener(installer);
         } catch (StorageException e) {
             throw new ModuleStartException(e.getMessage(), e);
         }

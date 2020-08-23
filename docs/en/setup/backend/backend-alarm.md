@@ -5,15 +5,33 @@ There are three parts in alarm rule definition.
 1. [Webhooks](#webhook). The list of web service endpoint, which should be called after the alarm is triggered.
 1. [gRPCHook](#gRPCHook). The host and port of remote gRPC method, which should be called after the alarm is triggered.
 
+## Entity name
+Define the relation between scope and entity name.
+- **Service**: Service name
+- **Instance**: {Instance name} of {Service name}
+- **Endpoint**: {Endpoint name} in {Service name}
+- **Database**: Database service name
+- **Service Relation**: {Source service name} to {Dest service name}
+- **Instance Relation**: {Source instance name} of {Source service name} to {Dest instance name} of {Dest service name}
+- **Endpoint Relation**: {Source endpoint name} in {Source Service name} to {Dest endpoint name} in {Dest service name}
+
 ## Rules
 Alarm rule is constituted by following keys
 - **Rule name**. Unique name, show in alarm message. Must end with `_rule`.
 - **Metrics name**. A.K.A. metrics name in oal script. Only long, double, int types are supported. See
 [List of all potential metrics name](#list-of-all-potential-metrics-name).
-- **Include names**. The following entity names are included in this rule. Such as Service name,
-endpoint name.
-- **Exclude names**. The following entity names are excluded in this rule. Such as Service name,
-  endpoint name.
+- **Include names**. The following entity names are included in this rule. Please follow [Entity name define](#entity-name).
+- **Exclude names**. The following entity names are excluded in this rule. Please follow [Entity name define](#entity-name).
+- **Include names regex**. Provide a regex to include the entity names. If both setting the include name list and include name regex, both rules will take effect.
+- **Exclude names regex**. Provide a regex to exclude the exclude names. If both setting the exclude name list and exclude name regex, both rules will take effect.
+- **Include labels**. The following labels of the metric are included in this rule.
+- **Exclude labels**. The following labels of the metric are excluded in this rule.
+- **Include labels regex**. Provide a regex to include labels. If both setting the include label list and include label regex, both rules will take effect.
+- **Exclude labels regex**. Provide a regex to exclude labels. If both setting the exclude label list and exclude label regex, both rules will take effect.
+
+*The settings of labels is required by meter-system which intends to store metrics from label-system platform, just like Prometheus, Micrometer, etc.
+The function supports the above four settings should implement `LabeledValueHolder`.*
+
 - **Threshold**. The target value. 
 For multiple values metrics, such as **percentile**, the threshold is an array. Described like  `value1, value2, value3, value4, value5`.
 Each value could the threshold for each value of the metrics. Set the value to `-` if don't want to trigger alarm by this or some of the values.  
@@ -65,6 +83,16 @@ rules:
     count: 3
     silence-period: 5
     message: Percentile response time of service {name} alarm in 3 minutes of last 10 minutes, due to more than one condition of p50 > 1000, p75 > 1000, p90 > 1000, p95 > 1000, p99 > 1000
+  meter_service_status_code_rule:
+    metrics-name: meter_status_code
+    exclude-labels:
+      - "200"
+    op: ">"
+    threshold: 10
+    period: 10
+    count: 3
+    silence-period: 5
+    message: The request number of entity {name} non-200 status is more than expected.
 ```
 
 ### Default alarm rules
@@ -72,21 +100,23 @@ We provided a default `alarm-setting.yml` in our distribution only for convenien
 1. Service average response time over 1s in last 3 minutes.
 1. Service success rate lower than 80% in last 2 minutes.
 1. Percentile of service response time is over 1s in last 3 minutes
-1. Service Instance average response time over 1s in last 2 minutes.
+1. Service Instance average response time over 1s in last 2 minutes, and the instance name matches the regex.
 1. Endpoint average response time over 1s in last 2 minutes.
+1. Database access average response time over 1s in last 2 minutes.
+1. Endpoint relation average response time over 1s in last 2 minutes.
 
 ### List of all potential metrics name
 The metrics names are defined in official [OAL scripts](../../guides/backend-oal-scripts.md), right now 
-metrics from **Service**, **Service Instance**, **Endpoint** scopes could be used in Alarm, we will extend in further versions. 
+metrics from **Service**, **Service Instance**, **Endpoint**, **Service Relation**, **Service Instance Relation**, **Endpoint Relation** scopes could be used in Alarm, and the **Database access** same with **Service** scope.
 
 Submit issue or pull request if you want to support any other scope in alarm.
 
 ## Webhook
-Webhook requires the peer is a web container. The alarm message will send through HTTP post by `application/json` content type. The JSON format is based on `List<org.apache.skywalking.oap.server.core.alarm.AlarmMessage` with following key information.
+Webhook requires the peer is a web container. The alarm message will send through HTTP post by `application/json` content type. The JSON format is based on `List<org.apache.skywalking.oap.server.core.alarm.AlarmMessage>` with following key information.
 - **scopeId**, **scope**. All scopes are defined in org.apache.skywalking.oap.server.core.source.DefaultScopeDefine.
-- **name**. Target scope entity name.
-- **id0**. The ID of scope entity, matched the name.
-- **id1**. Not used today.
+- **name**. Target scope entity name. Please follow [Entity name define](#entity-name).
+- **id0**. The ID of the scope entity matched the name. When using relation scope, it is the source entity ID.
+- **id1**. When using relation scope, it will be the dest entity ID. Otherwise, it is empty.
 - **ruleName**. The rule name you configured in `alarm-settings.yml`.
 - **alarmMessage**. Alarm text message.
 - **startTime**. Alarm time measured in milliseconds, between the current time and midnight, January 1, 1970 UTC.
@@ -95,20 +125,20 @@ Example as following
 ```json
 [{
 	"scopeId": 1, 
-        "scope": "SERVICE",
-        "name": "serviceA", 
+	"scope": "SERVICE",
+	"name": "serviceA", 
 	"id0": "12",  
 	"id1": "",  
-        "ruleName": "service_resp_time_rule",
+    "ruleName": "service_resp_time_rule",
 	"alarmMessage": "alarmMessage xxxx",
 	"startTime": 1560524171000
 }, {
 	"scopeId": 1,
-        "scope": "SERVICE",
-        "name": "serviceB",
+	"scope": "SERVICE",
+	"name": "serviceB",
 	"id0": "23",
 	"id1": "",
-        "ruleName": "service_resp_time_rule",
+    "ruleName": "service_resp_time_rule",
 	"alarmMessage": "alarmMessage yyy",
 	"startTime": 1560524171000
 }]
@@ -130,6 +160,24 @@ message AlarmMessage {
     string alarmMessage = 7;
     int64 startTime = 8;
 }
+```
+
+## Slack Chat Hook
+To do this you need to follow the [Getting Started with Incoming Webhooks guide](https://api.slack.com/messaging/webhooks) and create new Webhooks.
+
+The alarm message will send through HTTP post by `application/json` content type if you configured Slack Incoming Webhooks as following:
+```yml
+slackHooks:
+  textTemplate: |-
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": ":alarm_clock: *Apache Skywalking Alarm* \n **%s**."
+      }
+    }
+  webhooks:
+    - https://hooks.slack.com/services/x/y/z
 ```
 
 ## Update the settings dynamically
